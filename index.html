@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Daus 3D i Calculadora PCMAT</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    .three-canvas-container {
+      width: 100%;
+      height: 220px;
+      position: relative;
+      cursor: pointer;
+      border-radius: 0.75rem;
+      overflow: hidden;
+      background: radial-gradient(circle at center, #ffffff 0%, #f1f5f9 100%);
+    }
+    .three-canvas-container canvas {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen flex flex-col justify-between text-slate-800">
+
+  <!-- CAPÇALERA I CONTROLS PRINCIPALS -->
+  <header class="bg-teal-700 text-white p-4 shadow-xl border-b-4 border-teal-900">
+    <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+      <div class="flex items-center gap-3">
+        <span class="text-4xl">🎲</span>
+        <div>
+          <h1 class="text-2xl font-black tracking-tight">Daus 3D i Calculadora PCMAT</h1>
+          <p class="text-xs text-teal-100 font-medium">Atenció a la diversitat i Pensament Computacional (NESE)</p>
+        </div>
+      </div>
+      
+      <div class="flex flex-wrap items-center justify-center gap-3">
+        <!-- Selector de tipus de dau -->
+        <div class="flex items-center gap-2 bg-teal-800 px-3 py-1.5 rounded-xl border border-teal-600 shadow-inner">
+          <label for="typeSelect" class="text-xs font-bold text-teal-100 uppercase">Tipus:</label>
+          <select id="typeSelect" class="bg-white text-slate-800 text-sm font-bold rounded-lg px-2.5 py-1 focus:outline-none cursor-pointer">
+            <option value="6" selected>DAU D6</option>
+            <option value="8">DAU D8</option>
+            <option value="12">DAU D12</option>
+          </select>
+          <button id="addDiceBtn" class="bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-sm font-extrabold px-3 py-1 rounded-lg transition shadow">
+            + Afegir Dau
+          </button>
+        </div>
+
+        <!-- Selector d'operació -->
+        <div class="flex items-center gap-2 bg-teal-800 px-3 py-1.5 rounded-xl border border-teal-600 shadow-inner">
+          <label for="opSelect" class="text-xs font-bold text-teal-100 uppercase">Operació:</label>
+          <select id="opSelect" class="bg-white text-slate-800 text-sm font-bold rounded-lg px-2.5 py-1 focus:outline-none cursor-pointer">
+            <option value="sum" selected>➕ Suma (+)</option>
+            <option value="sub">➖ Resta (-)</option>
+            <option value="mul">✖️ Multiplicació (×)</option>
+          </select>
+        </div>
+
+        <!-- Botó llançar tots -->
+        <button id="rollAllBtn" class="bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-black px-4 py-1.5 rounded-xl shadow-lg transition flex items-center gap-1 border border-emerald-400">
+          <span>🔄 Llançar Tots</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- CALCULADORA I PANELS PRINCIPALS -->
+  <main class="max-w-6xl mx-auto w-full p-4 md:p-6 flex-grow flex flex-col gap-6">
+    <div class="bg-white p-5 rounded-2xl shadow-lg border-2 border-teal-600 flex flex-col items-center justify-center text-center relative overflow-hidden">
+      <span class="text-xs uppercase font-extrabold text-slate-500 tracking-wider mb-1">Resultat Calculadora PCMAT</span>
+      <div id="resultDisplay" class="text-5xl font-black text-teal-700 tracking-tight">0</div>
+      
+      <!-- Detall del desenvolupament de la llista/operació -->
+      <div id="stepDisplay" class="text-sm font-bold text-slate-500 mt-2 min-h-[1.25rem]"></div>
+
+      <!-- Avís Comodí -->
+      <div id="pcmatNotice" class="hidden mt-3 text-sm text-amber-900 bg-amber-100 border border-amber-300 px-4 py-1.5 rounded-full font-bold shadow-sm flex items-center gap-2">
+        <span>🤖</span>
+        <span>Cara PCMAT detectada! S'exclou del càlcul matemàtic.</span>
+      </div>
+    </div>
+
+    <!-- GRID DE DAUS GENERATS -->
+    <div id="diceGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+  </main>
+
+  <!-- PEU DE PÀGINA -->
+  <footer class="bg-slate-800 text-slate-300 text-center py-4 text-xs font-medium border-t border-slate-700">
+    Creat per Aurora Pelejà - Mentoria PCMAT
+  </footer>
+
+  <!-- LÒGICA 3D NATIVA AMB THREE.JS -->
+  <script>
+    let diceList = [];
+    let diceIdCounter = 0;
+
+    // Càlcul de resultats per a la calculadora
+    function calculateResult() {
+      const op = document.getElementById('opSelect').value;
+      const display = document.getElementById('resultDisplay');
+      const stepDisplay = document.getElementById('stepDisplay');
+      const notice = document.getElementById('pcmatNotice');
+
+      if (diceList.length === 0) {
+        display.innerText = '0';
+        stepDisplay.innerText = '';
+        notice.classList.add('hidden');
+        return;
+      }
+
+      let hasPCMAT = false;
+      const numericValues = [];
+
+      diceList.forEach(dice => {
+        const valStr = dice.currentValue;
+        if (valStr === '🤖 PCMAT' || valStr === 'PCMAT' || valStr === '🤖') {
+          hasPCMAT = true;
+        } else {
+          const num = parseFloat(valStr);
+          if (!isNaN(num)) numericValues.push(num);
+        }
+      });
+
+      if (hasPCMAT) {
+        notice.classList.remove('hidden');
+      } else {
+        notice.classList.add('hidden');
+      }
+
+      if (numericValues.length === 0) {
+        display.innerText = hasPCMAT ? '🤖 (Només PCMAT)' : '0';
+        stepDisplay.innerText = '';
+        return;
+      }
+
+      let res = 0;
+      let stepText = '';
+
+      if (op === 'sum') {
+        res = numericValues.reduce((a, b) => a + b, 0);
+        stepText = numericValues.join(' + ') + ' = ' + res;
+      } else if (op === 'mul') {
+        res = numericValues.reduce((a, b) => a * b, 1);
+        stepText = numericValues.join(' × ') + ' = ' + res;
+      } else if (op === 'sub') {
+        // Ordenar de major a menor
+        const sorted = [...numericValues].sort((a, b) => b - a);
+        res = sorted[0];
+        for (let i = 1; i < sorted.length; i++) {
+          res -= sorted[i];
+        }
+        stepText = sorted.join(' - ') + ' = ' + res;
+      }
+
+      display.innerText = Number.isInteger(res) ? res : res.toFixed(2);
+      stepDisplay.innerText = stepText;
+    }
+
+    // Creació de la textura d'una cara individual
+    function createFaceTexture(value) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+
+      // Fons blanc resina pur
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 256, 256);
+
+      // Marc suau per definir la cara
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.lineWidth = 12;
+      ctx.strokeRect(6, 6, 244, 244);
+
+      const isPCMAT = (value === 'PCMAT' || value === '🤖 PCMAT' || value === '🤖' || value === '');
+
+      if (isPCMAT) {
+        ctx.font = 'bold 110px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🤖', 128, 110);
+
+        ctx.fillStyle = '#0f766e';
+        ctx.font = 'bold 36px sans-serif';
+        ctx.fillText('PCMAT', 128, 200);
+      } else {
+        ctx.fillStyle = '#0f172a';
+        let fontSize = 120;
+        if (value.length > 2) fontSize = 80;
+        if (value.length > 4) fontSize = 50;
+
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(value, 128, 128);
+      }
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.needsUpdate = true;
+      return texture;
+    }
+
+    class Dice3DCard {
+      constructor(id, facesCount) {
+        this.id = id;
+        this.facesCount = parseInt(facesCount);
+        this.values = Array.from({ length: this.facesCount }, (_, i) => {
+          if (i === this.facesCount - 1) return '🤖 PCMAT';
+          return (i + 1).toString();
+        });
+        this.selectedIndex = 0;
+        this.currentValue = this.values[0];
+        this.isRolling = false;
+
+        this.initDOM();
+        this.initThree();
+        this.snapToFace(0);
+      }
+
+      initDOM() {
+        const grid = document.getElementById('diceGrid');
+        const card = document.createElement('div');
+        card.className = "bg-white rounded-2xl shadow-md p-4 flex flex-col justify-between border border-slate-200 hover:shadow-xl transition";
+        card.id = `dice-card-${this.id}`;
+
+        card.innerHTML = `
+          <div class="flex justify-between items-center mb-2 border-b pb-2">
+            <span class="font-black text-teal-800 text-sm uppercase tracking-wider">DAU D${this.facesCount}</span>
+            <button class="delete-btn text-rose-500 hover:text-rose-700 text-xs font-bold px-2 py-1 rounded hover:bg-rose-50 transition">🗑️ Eliminar</button>
+          </div>
+          
+          <div class="three-canvas-container shadow-inner border border-slate-200 mb-3" id="container-${this.id}" title="Fes clic per llançar aquest dau"></div>
+          
+          <div class="flex justify-between items-center bg-teal-50 border border-teal-200 p-2.5 rounded-xl mb-3">
+            <span class="text-xs font-extrabold text-teal-900 uppercase">Cara Frontal:</span>
+            <span class="current-val font-black text-xl text-teal-900" id="val-${this.id}">${this.currentValue}</span>
+          </div>
+
+          <details class="text-xs bg-slate-50 rounded-xl p-2 border border-slate-200">
+            <summary class="cursor-pointer font-bold text-slate-700 hover:text-teal-700">⚙️ Personalitzar Cares (${this.facesCount})</summary>
+            <div class="grid grid-cols-2 gap-2 mt-2 max-h-36 overflow-y-auto p-1" id="inputs-${this.id}">
+              ${this.values.map((v, i) => `
+                <div class="flex items-center gap-1">
+                  <span class="w-4 text-slate-400 font-bold">${i+1}:</span>
+                  <input type="text" value="${v}" data-index="${i}" class="face-in w-full border border-slate-300 rounded px-1.5 py-0.5 text-xs font-medium focus:ring-1 focus:ring-teal-500">
+                  <button data-index="${i}" class="pcmat-btn bg-amber-500 text-white text-[10px] px-1.5 py-0.5 rounded font-bold hover:bg-amber-600 transition" title="Assignar cara PCMAT">🤖</button>
+                </div>
+              `).join('')}
+            </div>
+          </details>
+
+          <button class="roll-btn w-full mt-3 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white text-sm font-black py-2 rounded-xl transition shadow-md">
+            🎲 Llançar aquest dau
+          </button>
+        `;
+
+        grid.appendChild(card);
+
+        card.querySelector('.delete-btn').addEventListener('click', () => this.destroy());
+        card.querySelector('.roll-btn').addEventListener('click', () => this.roll());
+        card.querySelector(`#container-${this.id}`).addEventListener('click', () => this.roll());
+
+        card.querySelectorAll('.face-in').forEach(input => {
+          input.addEventListener('change', (e) => {
+            const idx = e.target.dataset.index;
+            this.values[idx] = e.target.value.trim();
+            this.updateFaceTextures();
+            calculateResult();
+          });
+        });
+
+        card.querySelectorAll('.pcmat-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const idx = e.target.dataset.index;
+            this.values[idx] = '🤖 PCMAT';
+            const input = card.querySelector(`.face-in[data-index="${idx}"]`);
+            if (input) input.value = '🤖 PCMAT';
+            this.updateFaceTextures();
+            calculateResult();
+          });
+        });
+      }
+
+      initThree() {
+        const container = document.getElementById(`container-${this.id}`);
+        this.scene = new THREE.Scene();
+
+        this.camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+        this.camera.position.set(0, 0, 4.2);
+
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        this.renderer.setSize(container.clientWidth, container.clientHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(this.renderer.domElement);
+
+        // Il·luminació
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+        this.scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        dirLight.position.set(5, 5, 5);
+        this.scene.add(dirLight);
+
+        this.diceGroup = new THREE.Group();
+        this.scene.add(this.diceGroup);
+
+        this.buildDiceGeometry();
+
+        window.addEventListener('resize', () => {
+          if (!container) return;
+          this.camera.aspect = container.clientWidth / container.clientHeight;
+          this.camera.updateProjectionMatrix();
+          this.renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+
+        this.animate = this.animate.bind(this);
+        requestAnimationFrame(this.animate);
+      }
+
+      buildDiceGeometry() {
+        // Geometries NATIVES de Three.js
+        if (this.facesCount === 6) {
+          const geom = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+          this.materials = this.values.map(v => new THREE.MeshStandardMaterial({
+            map: createFaceTexture(v),
+            roughness: 0.25,
+            metalness: 0.05
+          }));
+
+          // Ordre de cares Three.js BoxGeometry: +X, -X, +Y, -Y, +Z, -Z
+          this.mesh = new THREE.Mesh(geom, this.materials);
+          this.diceGroup.add(this.mesh);
+
+          this.faceNormals = [
+            new THREE.Vector3(1, 0, 0),
+            new THREE.Vector3(-1, 0, 0),
+            new THREE.Vector3(0, 1, 0),
+            new THREE.Vector3(0, -1, 0),
+            new THREE.Vector3(0, 0, 1),
+            new THREE.Vector3(0, 0, -1)
+          ];
+        } else if (this.facesCount === 8) {
+          const geom = new THREE.OctahedronGeometry(1.1);
+          this.mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({
+            color: 0xf8fafc,
+            roughness: 0.25,
+            metalness: 0.05
+          }));
+          this.diceGroup.add(this.mesh);
+
+          this.faceNormals = [];
+          const pos = geom.attributes.position;
+          for (let i = 0; i < pos.count; i += 3) {
+            const vA = new THREE.Vector3().fromBufferAttribute(pos, i);
+            const vB = new THREE.Vector3().fromBufferAttribute(pos, i + 1);
+            const vC = new THREE.Vector3().fromBufferAttribute(pos, i + 2);
+            const norm = new THREE.Vector3().crossVectors(vB.sub(vA), vC.sub(vA)).normalize();
+            this.faceNormals.push(norm);
+          }
+
+          this.facePlanes = [];
+          this.faceNormals.forEach((norm, idx) => {
+            const planeGeom = new THREE.PlaneGeometry(0.7, 0.7);
+            const mat = new THREE.MeshBasicMaterial({
+              map: createFaceTexture(this.values[idx]),
+              transparent: true
+            });
+            const plane = new THREE.Mesh(planeGeom, mat);
+            plane.position.copy(norm).multiplyScalar(0.66);
+            plane.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), norm);
+            this.mesh.add(plane);
+            this.facePlanes.push(plane);
+          });
+        } else if (this.facesCount === 12) {
+          const geom = new THREE.DodecahedronGeometry(1.0);
+          this.mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({
+            color: 0xf8fafc,
+            roughness: 0.25,
+            metalness: 0.05
+          }));
+          this.diceGroup.add(this.mesh);
+
+          this.faceNormals = [];
+          const pos = geom.attributes.position;
+          for (let i = 0; i < pos.count; i += 3) {
+            const vA = new THREE.Vector3().fromBufferAttribute(pos, i);
+            const vB = new THREE.Vector3().fromBufferAttribute(pos, i + 1);
+            const vC = new THREE.Vector3().fromBufferAttribute(pos, i + 2);
+            const norm = new THREE.Vector3().crossVectors(vB.sub(vA), vC.sub(vA)).normalize();
+
+            let exists = this.faceNormals.some(n => n.distanceTo(norm) < 0.1);
+            if (!exists) {
+              this.faceNormals.push(norm);
+            }
+          }
+
+          this.facePlanes = [];
+          this.faceNormals.forEach((norm, idx) => {
+            const planeGeom = new THREE.PlaneGeometry(0.6, 0.6);
+            const mat = new THREE.MeshBasicMaterial({
+              map: createFaceTexture(this.values[idx]),
+              transparent: true
+            });
+            const plane = new THREE.Mesh(planeGeom, mat);
+            plane.position.copy(norm).multiplyScalar(0.81);
+            plane.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), norm);
+            this.mesh.add(plane);
+            this.facePlanes.push(plane);
+          });
+        }
+      }
+
+      updateFaceTextures() {
+        if (this.facesCount === 6) {
+          this.materials.forEach((mat, idx) => {
+            mat.map = createFaceTexture(this.values[idx]);
+            mat.map.needsUpdate = true;
+          });
+        } else {
+          this.facePlanes.forEach((plane, idx) => {
+            plane.material.map = createFaceTexture(this.values[idx]);
+            plane.material.map.needsUpdate = true;
+          });
+        }
+      }
+
+      snapToFace(index) {
+        this.selectedIndex = index;
+        const targetNormal = this.faceNormals[index].clone();
+        const targetQuaternion = new THREE.Quaternion().setFromUnitVectors(targetNormal, new THREE.Vector3(0, 0, 1));
+        this.diceGroup.quaternion.copy(targetQuaternion);
+
+        this.currentValue = this.values[index] || '🤖 PCMAT';
+        document.getElementById(`val-${this.id}`).innerText = this.currentValue;
+      }
+
+      roll() {
+        if (this.isRolling) return;
+        this.isRolling = true;
+
+        const targetIndex = Math.floor(Math.random() * this.facesCount);
+        this.selectedIndex = targetIndex;
+
+        const targetNormal = this.faceNormals[targetIndex].clone();
+        const targetQuaternion = new THREE.Quaternion().setFromUnitVectors(targetNormal, new THREE.Vector3(0, 0, 1));
+
+        // Afegir voltes extres en Quàternió
+        const randomAxis = new THREE.Vector3(Math.random(), Math.random(), Math.random()).normalize();
+        const extraRot = new THREE.Quaternion().setFromAxisAngle(randomAxis, Math.PI * 4);
+        const finalQuaternion = targetQuaternion.clone().multiply(extraRot);
+
+        const startQuaternion = this.diceGroup.quaternion.clone();
+
+        let startTime = null;
+        const duration = 1200;
+
+        const animateRoll = (time) => {
+          if (!startTime) startTime = time;
+          const elapsed = time - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+
+          // Easing suau
+          const easeOut = 1 - Math.pow(1 - progress, 3);
+
+          THREE.Quaternion.slerp(startQuaternion, finalQuaternion, this.diceGroup.quaternion, easeOut);
+
+          if (progress < 1) {
+            requestAnimationFrame(animateRoll);
+          } else {
+            this.diceGroup.quaternion.copy(targetQuaternion);
+            this.isRolling = false;
+            this.currentValue = this.values[targetIndex] || '🤖 PCMAT';
+            document.getElementById(`val-${this.id}`).innerText = this.currentValue;
+            calculateResult();
+          }
+        };
+
+        requestAnimationFrame(animateRoll);
+      }
+
+      animate() {
+        requestAnimationFrame(this.animate);
+        if (!this.isRolling && this.diceGroup) {
+          // Micro moviment d'espera suau
+          this.diceGroup.rotation.y += 0.002;
+        }
+        this.renderer.render(this.scene, this.camera);
+      }
+
+      destroy() {
+        diceList = diceList.filter(d => d.id !== this.id);
+        document.getElementById(`dice-card-${this.id}`).remove();
+        calculateResult();
+      }
+    }
+
+    // Inicialització global
+    function addDice(type) {
+      diceIdCounter++;
+      const dice = new Dice3DCard(diceIdCounter, type);
+      diceList.push(dice);
+      calculateResult();
+    }
+
+    document.getElementById('addDiceBtn').addEventListener('click', () => {
+      const type = parseInt(document.getElementById('typeSelect').value);
+      addDice(type);
+    });
+
+    document.getElementById('opSelect').addEventListener('change', () => {
+      calculateResult();
+    });
+
+    document.getElementById('rollAllBtn').addEventListener('click', () => {
+      diceList.forEach(dice => dice.roll());
+    });
+
+    // Iniciar amb dos daus D6 per defecte
+    window.addEventListener('load', () => {
+      addDice(6);
+      addDice(6);
+    });
+  </script>
+</body>
+</html>
